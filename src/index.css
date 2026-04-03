@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Orbitron:wght@400..900&family=Space+Grotesk:wght@300..700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-neon-green: #39ff14;
+  --color-neon-purple: #bc13fe;
+  --color-glass: rgba(255, 255, 255, 0.08);
+  --color-glass-border: rgba(255, 255, 255, 0.15);
+  
+  --neon-green-rgb: 57, 255, 20;
+  --neon-purple-rgb: 188, 19, 254;
+  --slate-rgb: 100, 116, 139;
+  
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-accent: "Orbitron", sans-serif;
+}
+
+body {
+  @apply bg-[#05080c] text-slate-100 min-h-screen font-sans antialiased transition-colors duration-300;
+}
+
+.light body {
+  @apply bg-slate-50 text-slate-900;
+}
+
+.glass-card {
+  @apply bg-[#0a0f16] border border-slate-900 rounded-xl transition-all duration-300;
+}
+
+.light .glass-card {
+  @apply bg-white border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-xl;
+}
+
+.light .text-white {
+  @apply text-slate-900;
+}
+
+.light .text-slate-400 {
+  @apply text-slate-500;
+}
+
+.light .text-slate-600 {
+  @apply text-slate-400;
+}
+
+.light .bg-[#0a0f16] {
+  @apply bg-white border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+}
+
+.light .bg-slate-950\/50 {
+  @apply bg-slate-100/50 border-slate-200/50;
+}
+
+.light .border-slate-900 {
+  @apply border-slate-200;
+}
+
+.light .bg-slate-900 {
+  @apply bg-slate-200;
+}
+
+.light .bg-slate-950 {
+  @apply bg-slate-100;
+}
+
+.light .bg-slate-900\/50 {
+  @apply bg-white border-slate-200 shadow-sm;
+}
+
+.light .text-neon-green {
+  @apply text-emerald-600;
+}
+
+.light .text-neon-purple {
+  @apply text-violet-600;
+}
+
+.light .bg-neon-green {
+  @apply bg-emerald-600 text-white;
+}
+
+.light .bg-neon-purple {
+  @apply bg-violet-600 text-white;
+}
+
+.light .shadow-\[0_0_8px_#39ff14\] {
+  @apply shadow-[0_0_8px_rgba(5,150,105,0.3)];
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.neon-glow-green {
+  box-shadow: 0 0 15px rgba(57, 255, 20, 0.3);
+}
+
+.neon-glow-purple {
+  box-shadow: 0 0 15px rgba(188, 19, 254, 0.3);
+}
+
+.scanline {
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(to right, transparent, #39ff14, transparent);
+  opacity: 0.3;
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: scanline 4s linear infinite;
+}
+
+@keyframes scanline {
+  0% { top: 0; }
+  100% { top: 100%; }
+}

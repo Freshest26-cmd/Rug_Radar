@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  scanner:
+    build: ./core/scanner
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq
+
+  analytics:
+    build: ./core/analytics
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq
+
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    depends_on:
+      - rabbitmq
+      - redis
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://rabbitmq
