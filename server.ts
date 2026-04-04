@@ -5,6 +5,9 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +23,8 @@ const generateApiKey = () => {
 };
 
 const hashKey = (key: string) => {
-  return crypto.createHash('sha256').update(key).digest('hex');
+  const secret = process.env.API_KEY_SECRET || 'default_secret_change_me';
+  return crypto.createHmac('sha256', secret).update(key).digest('hex');
 };
 
 async function startServer() {
@@ -34,7 +38,7 @@ async function startServer() {
     },
   });
 
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   // Authentication Middleware for API Keys
   const authMiddleware = (req: any, res: any, next: any) => {
