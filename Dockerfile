@@ -1,6 +1,15 @@
 # Stage 1: Build C++ Backend
-FROM alpine:3.18 AS cpp-build
-RUN apk add --no-cache build-base cmake boost-dev postgresql-dev uwebsockets-dev nlohmann-json
+FROM node:20-slim AS cpp-build
+
+# Install standard build tools for Debian
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libboost-all-dev \
+    libpq-dev \
+    nlohmann-json3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY ./backend-cpp /app/backend-cpp
 WORKDIR /app/backend-cpp
 RUN mkdir build && cd build && cmake .. && make
@@ -18,7 +27,7 @@ RUN npm run build
 FROM node:20-slim
 WORKDIR /app
 
-# Install runtime dependencies for C++ and Node
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libpq5 \
     libboost-system1.74.0 \
