@@ -5,20 +5,25 @@ import { formatCurrency, getRiskColor } from '../lib/utils';
 import { Link } from 'react-router-dom';
 
 import { useScannerStore } from '../store';
+import { RecommendationSkeleton } from '../components/TokenCardSkeleton';
 
 export default function Recommendations() {
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const isDemoMode = useScannerStore(state => state.isDemoMode);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setIsLoading(true);
     fetch('/api/tokens')
       .then(res => res.json())
       .then(data => {
         const sorted = data.sort((a: any, b: any) => b.recommendation - a.recommendation);
         const limited = isDemoMode ? sorted.slice(0, 5) : sorted;
         setRecommendations(limited);
-      });
+        setIsLoading(false);
+      })
+      .catch(() => setIsLoading(false));
 
     gsap.from('.header-anim', { opacity: 0, y: -20, duration: 0.8 });
   }, []);
@@ -52,12 +57,21 @@ export default function Recommendations() {
       </header>
 
       <div ref={listRef} className="space-y-3">
-        {recommendations.map((token, i) => (
-          <Link
-            to={`/token/${token.address}`}
-            key={token.id}
-            className="rec-card bg-[#0a0f16] border border-slate-900 p-4 md:p-6 rounded-xl grid grid-cols-1 md:grid-cols-12 items-center gap-4 md:gap-6 hover:border-slate-800 transition-all group"
-          >
+        {isLoading ? (
+          <>
+            <RecommendationSkeleton />
+            <RecommendationSkeleton />
+            <RecommendationSkeleton />
+            <RecommendationSkeleton />
+            <RecommendationSkeleton />
+          </>
+        ) : (
+          recommendations.map((token, i) => (
+            <Link
+              to={`/token/${token.address}`}
+              key={token.id}
+              className="rec-card bg-[#0a0f16] border border-slate-900 p-4 md:p-6 rounded-xl grid grid-cols-1 md:grid-cols-12 items-center gap-4 md:gap-6 hover:border-slate-800 transition-all group"
+            >
             <div className="md:col-span-1 text-2xl md:text-3xl font-black text-slate-400 group-hover:text-neon-green/40 transition-colors font-mono">
               {i + 1}
             </div>
@@ -86,7 +100,7 @@ export default function Recommendations() {
               </div>
             </div>
           </Link>
-        ))}
+        )))}
         {isDemoMode && (
           <div className="p-8 text-center bg-slate-900/30 border border-dashed border-slate-800 rounded-xl space-y-4 mt-6">
             <p className="text-slate-400 text-xs font-medium">Top Picks are limited to 5 in Demo Mode.</p>

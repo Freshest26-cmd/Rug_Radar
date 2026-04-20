@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { formatCurrency, getRiskColor, getRiskLabel } from '../lib/utils';
 import { Shield, Zap, Users, BarChart3, TrendingUp, Plus, ArrowRight, Copy, Check, Filter, Search as SearchIcon, ShieldAlert, Key, Trash2, RefreshCw, Terminal } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from 'recharts';
+import { TokenCardSkeleton } from '../components/TokenCardSkeleton';
 
 const ApiKeysSection = () => {
   const apiKeys = useScannerStore(state => state.apiKeys);
@@ -279,18 +280,15 @@ export default function Dashboard() {
       { opacity: 1, y: 0, stagger: 0.1, duration: 0.6, ease: 'power3.out', clearProps: 'all' }
     );
 
-    // Fetch initial tokens if store is empty
-    if (tokens.length === 0) {
-      fetch('/api/tokens')
-        .then(res => res.json())
-        .then(data => {
-          setTokens(data);
-          setIsLoading(false);
-        })
-        .catch(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+    // Fetch initial tokens
+    setIsLoading(true);
+    fetch('/api/tokens')
+      .then(res => res.json())
+      .then(data => {
+        setTokens(data);
+        setIsLoading(false);
+      })
+      .catch(() => setIsLoading(false));
   }, []);
 
   const filteredTokens = tokens.filter(token => {
@@ -482,10 +480,13 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 gap-4">
             {isLoading ? (
-              <div className="py-20 text-center bg-[#0a0f16] border border-slate-900 rounded-xl space-y-4">
-                <div className="w-8 h-8 border-2 border-neon-green border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Initializing Neural Scanner...</p>
-              </div>
+              <>
+                <TokenCardSkeleton />
+                <TokenCardSkeleton />
+                <TokenCardSkeleton />
+                <TokenCardSkeleton />
+                <TokenCardSkeleton />
+              </>
             ) : (
               <>
                 {filteredTokens.map((token, i) => (

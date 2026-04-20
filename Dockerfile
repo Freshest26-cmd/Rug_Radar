@@ -50,6 +50,7 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libpq5 \
+    libpq-dev \
     libboost-system-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -59,8 +60,8 @@ COPY --from=cpp-build /app/backend-cpp/build/rugradar_backend /app/rugradar_back
 # Create a start script to run both
 RUN echo '#!/bin/bash\n\
 ./rugradar_backend & \n\
-npm start' > /app/start.sh
+PORT=10000 npm start' > /app/start.sh
 RUN chmod +x /app/start.sh
 
-EXPOSE 3000
+EXPOSE 10000
 CMD ["/app/start.sh"]
