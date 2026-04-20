@@ -26,7 +26,7 @@ struct Token {
 // Database connection string from environment
 std::string get_db_url() {
     const char* url = std::getenv("DATABASE_URL");
-    return url ? url : "postgresql://postgres:postgres@localhost:5432/rugradar";
+    return url ? url : "";
 }
 
 // Atomic transaction to save a token
