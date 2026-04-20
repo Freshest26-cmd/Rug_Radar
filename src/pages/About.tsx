@@ -112,7 +112,7 @@ export default function About() {
             <div className="absolute inset-8 border border-blue-500/20 rounded-full animate-[spin_20s_linear_infinite]" />
             
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-32 h-32 bg-neon-green/10 rounded-full blur-3xl animate-pulse" />
+              <div className="absolute w-32 h-32 bg-neon-green/10 rounded-full blur-3xl animate-pulse" />
               <div className="relative">
                 <Shield size={64} className="text-neon-green drop-shadow-[0_0_15px_rgba(57,255,20,0.5)]" />
                 <div className="absolute -inset-4 border border-neon-green/50 rounded-lg rotate-45 animate-pulse" />
@@ -133,7 +133,7 @@ export default function About() {
             ))}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl mx-auto">
             {[
               { label: 'HEURISTICS', value: 'ACTIVE' },
               { label: 'NEURAL WEIGHTS', value: 'DYNAMIC' },

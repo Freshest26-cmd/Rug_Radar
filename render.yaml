@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: rug-radar
+    runtime: docker
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: API_KEY_SECRET
+        sync: false
+      - key: LEMON_SQUEEZY_WEBHOOK_SECRET
+        sync: false
+      - key: LEMON_SQUEEZY_VAR_PRO
+        sync: false
+      - key: LEMON_SQUEEZY_VAR_WHALE
+        sync: false
+      - key: NODE_ENV
+        value: production

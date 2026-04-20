@@ -1,9 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Search, TrendingUp, Info, ShieldAlert, BarChart3, Sun, Moon, Twitter, Send, Github, Crown } from 'lucide-react';
+import { LayoutDashboard, Search, TrendingUp, Info, ShieldAlert, BarChart3, Sun, Moon, Twitter, Send, Github, Crown, LogIn, LogOut, User } from 'lucide-react';
 import { gsap } from 'gsap';
 import { io } from 'socket.io-client';
+import socket from './lib/socket';
 import { useScannerStore } from './store';
+import { auth, db, signInWithGoogle } from './lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+
+// Components
+import { NotificationToast } from './components/NotificationToast';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -19,6 +26,7 @@ const Navbar = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v:
   const navRef = useRef<HTMLElement>(null);
   const comparisonList = useScannerStore(state => state.comparisonList);
   const userPlan = useScannerStore(state => state.userPlan);
+  const user = useScannerStore(state => state.user);
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -28,6 +36,16 @@ const Navbar = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v:
     { path: '/pricing', label: userPlan === 'free' ? 'Upgrade' : 'Pricing', icon: Crown },
     { path: '/about', label: 'About', icon: Info },
   ];
+
+  const handleLogin = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      console.error("Login failed", error);
+    }
+  };
+
+  const handleLogout = () => signOut(auth);
 
   return (
     <nav ref={navRef} className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b px-4 md:px-8 py-4 flex items-center justify-between transition-all duration-300 ${darkMode ? 'bg-slate-950/80 border-slate-900' : 'bg-white/90 border-slate-200/60 shadow-sm'}`}>
@@ -53,6 +71,30 @@ const Navbar = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v:
         })}
       </div>
       <div className="flex items-center gap-4">
+        {user ? (
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col items-end hidden md:flex">
+              <span className={`text-[10px] font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{user.displayName}</span>
+              <span className="text-[8px] font-mono text-slate-500 lowercase">{user.email?.split('@')[0]}</span>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className={`p-2 rounded-lg border transition-all ${darkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-red-500/50 hover:bg-red-500/10' : 'bg-white border-slate-200 text-slate-500 hover:text-red-600 shadow-sm'}`}
+              title="Logout"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        ) : (
+          <button 
+            onClick={handleLogin}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-bold transition-all ${darkMode ? 'bg-neon-green border-neon-green/20 text-slate-950 hover:shadow-[0_0_15px_#39ff14]' : 'bg-slate-950 border-slate-800 text-white hover:bg-slate-800 shadow-lg shadow-emerald-500/20'}`}
+          >
+            <LogIn size={14} />
+            <span className="hidden sm:inline uppercase tracking-widest">Connect Identity</span>
+          </button>
+        )}
+
         <div className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full border ${
           userPlan === 'whale' ? 'bg-neon-purple/10 border-neon-purple/20 text-neon-purple' :
           userPlan === 'pro' ? 'bg-neon-green/10 border-neon-green/20 text-neon-green' :
@@ -67,10 +109,6 @@ const Navbar = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v:
         >
           {darkMode ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        <div className={`hidden sm:flex items-center gap-2 px-3 py-1 rounded-full border ${darkMode ? 'bg-green-500/10 border-green-500/20' : 'bg-green-500/5 border-green-500/10'}`}>
-          <div className="w-1.5 h-1.5 rounded-full bg-neon-green animate-pulse" />
-          <span className="text-[10px] font-bold text-neon-green uppercase tracking-widest font-mono">Live</span>
-        </div>
       </div>
     </nav>
   );
@@ -114,18 +152,70 @@ const Footer = ({ darkMode }: { darkMode: boolean }) => (
 );
 
 export default function App() {
+  const user = useScannerStore(state => state.user);
+  const setUser = useScannerStore(state => state.setUser);
   const addToken = useScannerStore(state => state.addToken);
+  const addNotification = useScannerStore(state => state.addNotification);
+  const setAlerts = useScannerStore(state => state.setAlerts);
   const [darkMode, setDarkMode] = useState(true);
 
   useEffect(() => {
-    const socket = io();
+    // Auth Listener
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+    });
+
+    return () => unsubscribeAuth();
+  }, [setUser]);
+
+  useEffect(() => {
+    // Firestore Alerts Sync
+    if (!user) {
+      setAlerts([]);
+      return;
+    }
+
+    const q = query(collection(db, `users/${user.uid}/alerts`));
+    const unsubscribeAlerts = onSnapshot(q, (snapshot) => {
+      const syncedAlerts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as any[];
+      setAlerts(syncedAlerts);
+    });
+
+    return () => unsubscribeAlerts();
+  }, [user, setAlerts]);
+
+  useEffect(() => {
+    // Shared Socket instance listeners
+    socket.on('connect', () => {
+      console.log('Connected to Backend (Socket.IO)');
+    });
+
     socket.on('new_token', (token) => {
       addToken(token);
     });
+
+    socket.on('alert_triggered', (data: { alertId: string; address: string; price: string }) => {
+      addNotification({
+        message: `PRICE ALERT: Token ${data.address.substring(0, 8)}... just hit $${data.price}!`,
+        type: 'success'
+      });
+      // Optionally remove the alert from local store as it was triggered
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from Backend');
+    });
+
     return () => {
-      socket.disconnect();
+      socket.off('connect');
+      socket.off('new_token');
+      socket.off('alert_triggered');
+      socket.off('disconnect');
     };
-  }, [addToken]);
+  }, [addToken, addNotification]);
 
   return (
     <Router>
@@ -142,6 +232,7 @@ export default function App() {
             <Route path="/pricing" element={<Pricing />} />
           </Routes>
         </main>
+        <NotificationToast />
         <Footer darkMode={darkMode} />
       </div>
     </Router>

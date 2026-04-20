@@ -1,0 +1,49 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  plan      String   @default("free") // free, pro, whale
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  keys      ApiKey[]
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  hashedKey String   @unique
+  name      String
+  usage     Int      @default(0)
+  limit     Int      @default(1000)
+  revoked   Boolean  @default(false)
+  lastUsed  DateTime?
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Token {
+  address        String   @id
+  id             String   @default(cuid())
+  name           String
+  symbol         String
+  age            String
+  liquidity      Float
+  rugRisk        Float
+  sentiment      Float
+  recommendation Int
+  volume         Float
+  holders        Int
+  discoveredAt   DateTime @default(now())
+}

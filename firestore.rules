@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- User Profile Validation ---
+    function isValidUser(data) {
+      return data.email is string &&
+             data.plan in ['free', 'pro', 'whale'] &&
+             data.createdAt is string &&
+             data.updatedAt is string;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && 
+                      isValidUser(request.resource.data) &&
+                      request.resource.data.createdAt == resource.data.createdAt &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plan', 'updatedAt', 'email']);
+
+      // --- Alerts Subcollection ---
+      function isValidAlert(data) {
+        return data.tokenAddress is string && data.tokenAddress.size() <= 128 &&
+               data.tokenName is string && data.tokenName.size() <= 128 &&
+               data.priceThreshold is number &&
+               data.condition in ['above', 'below'] &&
+               data.userId == request.auth.uid &&
+               data.createdAt is number &&
+               data.triggered is bool;
+      }
+
+      match /alerts/{alertId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAlert(request.resource.data) && isValidId(alertId);
+        allow update: if isOwner(userId) && 
+                        isValidAlert(request.resource.data) &&
+                        request.resource.data.userId == resource.data.userId &&
+                        request.resource.data.createdAt == resource.data.createdAt &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['triggered', 'priceThreshold', 'condition']);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

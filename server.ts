@@ -6,15 +6,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import WebSocket from "ws";
+import { prisma } from "./src/lib/db.js";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Mock Database for API Keys (In-memory for demo)
-// In production, this would be a database like Prisma/PostgreSQL
-const apiKeysDB: { id: string; hashedKey: string; name: string; createdAt: string; lastUsed?: string; usage: number; limit: number; revoked: boolean }[] = [];
 
 // Helper functions for API Keys
 const generateApiKey = () => {
@@ -25,6 +23,14 @@ const generateApiKey = () => {
 const hashKey = (key: string) => {
   const secret = process.env.API_KEY_SECRET || 'default_secret_change_me';
   return crypto.createHmac('sha256', secret).update(key).digest('hex');
+};
+
+// Internal Alerts tracking (for Socket.IO real-time delivery)
+const activeAlerts: { id: string; socketId: string; address: string; threshold: number; condition: 'above' | 'below'; triggered: boolean }[] = [];
+
+// Helper to simulate price fetching
+const getSimulatedPrice = (address: string) => {
+  return Math.random() * 100;
 };
 
 async function startServer() {
@@ -38,10 +44,10 @@ async function startServer() {
     },
   });
 
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
-  // Authentication Middleware for API Keys
-  const authMiddleware = (req: any, res: any, next: any) => {
+  // Authentication Middleware for API Keys using Prisma
+  const authMiddleware = async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: "Unauthorized: Missing or invalid API key format" });
@@ -49,23 +55,36 @@ async function startServer() {
 
     const key = authHeader.split(' ')[1];
     const hashed = hashKey(key);
-    const keyData = apiKeysDB.find(k => k.hashedKey === hashed && !k.revoked);
-
-    if (!keyData) {
-      return res.status(401).json({ error: "Unauthorized: Invalid or revoked API key" });
-    }
-
-    // Basic Rate Limiting
-    if (keyData.usage >= keyData.limit) {
-      return res.status(429).json({ error: "Too Many Requests: API key usage limit reached" });
-    }
-
-    // Update usage and last used
-    keyData.usage += 1;
-    keyData.lastUsed = new Date().toISOString();
     
-    req.apiKey = keyData;
-    next();
+    try {
+      const keyData = await prisma.apiKey.findFirst({
+        where: { hashedKey: hashed, revoked: false },
+        include: { user: true }
+      });
+
+      if (!keyData) {
+        return res.status(401).json({ error: "Unauthorized: Invalid or revoked API key" });
+      }
+
+      if (keyData.usage >= keyData.limit) {
+        return res.status(429).json({ error: "Too Many Requests: API key usage limit reached" });
+      }
+
+      await prisma.apiKey.update({
+        where: { id: keyData.id },
+        data: { 
+          usage: { increment: 1 },
+          lastUsed: new Date()
+        }
+      });
+      
+      req.apiKey = keyData;
+      req.user = keyData.user;
+      next();
+    } catch (err) {
+      console.error("Auth Error", err);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
   };
 
   // Mock data generation for the scanner
@@ -98,68 +117,133 @@ async function startServer() {
     }
   ];
 
-  // API Routes for Key Management (Internal/Dashboard)
-  app.get("/api/keys", (req, res) => {
-    // In a real app, you'd filter by user ID
-    const maskedKeys = apiKeysDB.map(k => ({
-      id: k.id,
-      name: k.name,
-      createdAt: k.createdAt,
-      lastUsed: k.lastUsed,
-      usage: k.usage,
-      limit: k.limit,
-      revoked: k.revoked,
-      // Masked version for UI
-      key: `rug_****${k.hashedKey.substring(0, 4)}`
-    }));
-    res.json(maskedKeys);
+  // API Routes for Key Management using Prisma
+  app.get("/api/keys", async (req, res) => {
+    try {
+      const keys = await prisma.apiKey.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+      const maskedKeys = keys.map(k => ({
+        id: k.id,
+        name: k.name,
+        createdAt: k.createdAt,
+        lastUsed: k.lastUsed,
+        usage: k.usage,
+        limit: k.limit,
+        revoked: k.revoked,
+        key: `rug_****${k.hashedKey.substring(0, 4)}`
+      }));
+      res.json(maskedKeys);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch keys" });
+    }
   });
 
-  app.post("/api/keys", (req, res) => {
-    const { name } = req.body;
+  app.post("/api/keys", async (req, res) => {
+    const { name, email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email required" });
+
     const rawKey = generateApiKey();
     const hashedKey = hashKey(rawKey);
     
-    const newKey = {
-      id: Math.random().toString(36).substr(2, 9),
-      hashedKey,
-      name: name || "Default Key",
-      createdAt: new Date().toISOString(),
-      usage: 0,
-      limit: 1000, // Default limit
-      revoked: false
-    };
+    try {
+      const user = await prisma.user.upsert({
+        where: { email },
+        update: {},
+        create: { email, name: name || "User" }
+      });
 
-    apiKeysDB.push(newKey);
-    
-    // Return the raw key ONLY ONCE
-    res.json({ ...newKey, key: rawKey });
-  });
+      const newKey = await prisma.apiKey.create({
+        data: {
+          hashedKey,
+          name: name || "Default Key",
+          userId: user.id,
+          limit: 1000
+        }
+      });
 
-  app.delete("/api/keys/:id", (req, res) => {
-    const key = apiKeysDB.find(k => k.id === req.params.id);
-    if (key) {
-      key.revoked = true;
+      res.json({ ...newKey, key: rawKey });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Failed to create key" });
     }
-    res.json({ success: true });
   });
 
-  // Protected Public Scanner API Routes (v1)
-  app.get("/api/v1/tokens", authMiddleware, (req, res) => {
-    res.json(tokens);
-  });
-
-  app.get("/api/v1/tokens/:address", authMiddleware, (req, res) => {
-    const token = tokens.find(t => t.address === req.params.address);
-    if (!token) {
-      return res.status(404).json({ error: "Token does not exist" });
+  app.delete("/api/keys/:id", async (req, res) => {
+    try {
+      await prisma.apiKey.update({
+        where: { id: req.params.id },
+        data: { revoked: true }
+      });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to revoke key" });
     }
-    res.json(token);
   });
 
-  // Internal Dashboard Routes (Unprotected for UI demo)
-  app.get("/api/tokens", (req, res) => {
-    res.json(tokens);
+  // Protected Public Scanner API Routes using Prisma
+  app.get("/api/v1/tokens", authMiddleware, async (req, res) => {
+    try {
+      const tokens = await prisma.token.findMany({
+        orderBy: { discoveredAt: 'desc' },
+        take: 50
+      });
+      res.json(tokens);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch tokens" });
+    }
+  });
+
+  app.get("/api/v1/tokens/:address", authMiddleware, async (req, res) => {
+    try {
+      const token = await prisma.token.findUnique({
+        where: { address: req.params.address }
+      });
+      if (!token) return res.status(404).json({ error: "Token not found in intelligence database" });
+      res.json(token);
+    } catch (err) {
+      res.status(500).json({ error: "Query failed" });
+    }
+  });
+
+  // Lemon Squeezy Webhook Handler
+  app.post("/api/webhooks/lemon-squeezy", async (req, res) => {
+    const secret = process.env.LEMON_SQUEEZY_WEBHOOK_SECRET;
+    const body = JSON.stringify(req.body);
+    const hmac = crypto.createHmac('sha256', secret || '');
+    const digest = Buffer.from(hmac.update(body).digest('hex'), 'utf8');
+    const signature = Buffer.from(req.get('X-Signature') || '', 'utf8');
+
+    if (secret && !crypto.timingSafeEqual(digest, signature)) {
+      return res.status(401).send('Invalid signature');
+    }
+
+    const { event_name, data } = req.body;
+
+    if (event_name === 'order_created' || event_name === 'subscription_created' || event_name === 'subscription_updated') {
+      const attributes = data.attributes;
+      const userEmail = attributes.user_email || attributes.email;
+      const variantId = String(attributes.variant_id);
+
+      // Map variant IDs to internal plan names
+      let plan = 'free';
+      if (variantId === process.env.LEMON_SQUEEZY_VAR_PRO) plan = 'pro';
+      if (variantId === process.env.LEMON_SQUEEZY_VAR_WHALE) plan = 'whale';
+
+      console.log(`Payment confirmed for ${userEmail}, upgrading plan to ${plan}...`);
+      
+      try {
+        await prisma.user.upsert({
+          where: { email: userEmail },
+          update: { plan },
+          create: { email: userEmail, plan }
+        });
+      } catch (err) {
+        console.error("Failed to update user plan", err);
+      }
+    }
+
+    res.status(200).send('Webhook processed');
   });
 
   app.get("/api/tokens/:address", (req, res) => {
@@ -170,7 +254,8 @@ async function startServer() {
     res.json(token);
   });
 
-  // Socket.io for real-time updates with Handshake Validation
+  // Socket.io (Auth disabled for internal dashboard demo)
+  /*
   io.use((socket, next) => {
     const key = socket.handshake.auth.token || socket.handshake.query.token;
     if (!key) {
@@ -186,12 +271,81 @@ async function startServer() {
 
     next();
   });
+  */
 
   io.on("connection", (socket) => {
-    console.log("Client connected with valid API key");
+    console.log("Client connected");
     
-    // Simulate real-time token launches
-    const interval = setInterval(() => {
+    // Price Alert Logic
+    socket.on("create_alert", (alert: { id: string; address: string; threshold: number; condition: 'above' | 'below' }) => {
+      console.log(`New alert created for ${alert.address} at ${alert.threshold}`);
+      activeAlerts.push({
+        ...alert,
+        socketId: socket.id,
+        triggered: false
+      });
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Client disconnected");
+    });
+  });
+
+  // Relay C++ Backend Data
+  function connectToScanner() {
+    const ws = new WebSocket("ws://localhost:3001");
+
+    ws.on("open", () => {
+      console.log("Connected to C++ Scanner Backend on port 3001");
+    });
+
+    ws.on("message", (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        
+        if (message.type === "new_token") {
+          io.emit("new_token", message.data);
+        } else if (message.type === "price_update") {
+          // Check alerts for all clients
+          activeAlerts.forEach(alert => {
+            if (alert.address === message.data.address && !alert.triggered) {
+              const currentPrice = message.data.price;
+              const isTriggered = alert.condition === 'above' 
+                ? currentPrice > alert.threshold 
+                : currentPrice < alert.threshold;
+              
+              if (isTriggered) {
+                alert.triggered = true;
+                io.to(alert.socketId).emit("alert_triggered", {
+                  alertId: alert.id,
+                  address: alert.address,
+                  price: currentPrice.toFixed(6)
+                });
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Failed to process message from C++ backend", err);
+      }
+    });
+
+    ws.on("error", (err) => {
+      console.error("Scanner WebSocket Error:", err.message);
+    });
+
+    ws.on("close", () => {
+      console.warn("Scanner connection lost. Retrying in 5 seconds...");
+      setTimeout(connectToScanner, 5000);
+    });
+  }
+
+  // Start the relay
+  if (process.env.NODE_ENV === "production") {
+    connectToScanner();
+  } else {
+    // Keep local simulation for development if C++ backend isn't running
+    setInterval(() => {
       const newToken = {
         id: Math.random().toString(36).substr(2, 9),
         name: `Token ${Math.floor(Math.random() * 1000)}`,
@@ -205,13 +359,9 @@ async function startServer() {
         volume: Math.floor(Math.random() * 20000),
         holders: Math.floor(Math.random() * 1000),
       };
-      socket.emit("new_token", newToken);
-    }, 5000);
-
-    socket.on("disconnect", () => {
-      clearInterval(interval);
-    });
-  });
+      io.emit("new_token", newToken);
+    }, 10000);
+  }
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

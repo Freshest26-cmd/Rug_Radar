@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a platform user and their subscription plan.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "plan": { "type": "string", "enum": ["free", "pro", "whale"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "plan", "createdAt", "updatedAt"]
+    },
+    "Alert": {
+      "title": "Price Alert",
+      "description": "A price alert set by a user for a specific token.",
+      "type": "object",
+      "properties": {
+        "tokenAddress": { "type": "string" },
+        "tokenName": { "type": "string" },
+        "priceThreshold": { "type": "number" },
+        "condition": { "type": "string", "enum": ["above", "below"] },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "triggered": { "type": "boolean" }
+      },
+      "required": ["tokenAddress", "tokenName", "priceThreshold", "condition", "userId", "createdAt", "triggered"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile and subscription data."
+    },
+    "/users/{userId}/alerts/{alertId}": {
+      "schema": "Alert",
+      "description": "User-specific price alerts."
+    }
+  }
+}
