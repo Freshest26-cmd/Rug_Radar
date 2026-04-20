@@ -5,7 +5,8 @@ FROM node:20-slim AS cpp-build
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
-    libboost-all-dev \
+    libboost-system-dev \
+    libboost-thread-dev \
     libpqxx-dev \
     libssl-dev \
     zlib1g-dev \
@@ -13,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Build uWebSockets and uSockets manually as they are often missing in standard repos
+# Build uWebSockets and uSockets manually
 WORKDIR /deps
 RUN git clone --recursive https://github.com/uNetworking/uWebSockets.git
 WORKDIR /deps/uWebSockets/uSockets
@@ -24,13 +25,14 @@ RUN make
 COPY ./backend-cpp /app/backend-cpp
 WORKDIR /app/backend-cpp
 
-# Ensure includes can find uWebSockets
-RUN cp -r /deps/uWebSockets/src /usr/local/include/uWebSockets && \
-    cp -r /deps/uWebSockets/uSockets/src /usr/local/include/uSockets && \
-    cp /deps/uWebSockets/uSockets/uSockets.a /usr/local/lib/ && \
-    cp /deps/uWebSockets/uSockets/*.o /usr/local/lib/ || true
+# Fix include paths for case-sensitivity (linux is strictly lowercase in your code)
+RUN mkdir -p /usr/local/include/uwebsockets && \
+    cp -r /deps/uWebSockets/src/* /usr/local/include/uwebsockets/ && \
+    mkdir -p /usr/local/include/usockets && \
+    cp -r /deps/uWebSockets/uSockets/src/* /usr/local/include/usockets/ && \
+    cp /deps/uWebSockets/uSockets/uSockets.a /usr/local/lib/libuSockets.a
 
-RUN mkdir build && cd build && cmake .. && make
+RUN mkdir build && cd build && cmake .. && make VERBOSE=1
 
 # Stage 2: Build Node.js App
 FROM node:20-slim AS node-build
@@ -48,7 +50,7 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libpq5 \
-    libboost-system1.74.0 \
+    libboost-system-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=node-build /app /app
